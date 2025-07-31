@@ -8,20 +8,12 @@ console.log('selector_injector.js 載入');
   // Listen for messages from background script
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "startSelecting") {
-      console.log('收到 chrome.runtime 消息:', message);
+      console.log('selector_injector 收到 chrome.runtime 消息:', message);
       currentMode = message.mode;
 	  if (currentMode === 'monitor') { // 改為直接監聽, 不必選
-		
-		  chrome.storage.local.get(['syncSource'], (data) => {
-			if (data && data.syncSource && data.syncSource.id) {
-      const syncSource = data.syncSource;
-			  //data.syncSource.target=?? ;
-			  data.syncSource.target=?? ;
-			  
-			}
-		  });
-	  }
-      activateSelector();
+        // const syncSource = WebTextSync.getStoredSyncSource();
+		// console.log('syncSource.target', syncSource.target) ;
+	  } else  activateSelector();
       return true;
     }
   });

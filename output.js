@@ -9,7 +9,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 	console.log('[WebTextSync] 收到並啟用 syncOutput', message );
 	  const SyncTarget = WebTextSync.syncTarget ? WebTextSync.syncTarget() : null;
 	  if (!SyncTarget) {
-		console.warn('[WebTextSync] 無法找到輸入框');
+		// console.warn('[WebTextSync] 無法找到輸入框');
 		return false;
 	  }
 	  // SyncTarget.innerHTML;

@@ -214,23 +214,92 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 // 載入頁面時從 storage 載入監聽目標並顯示
 function loadMonitorSelected() {
-  // 檢查 local storage 是否有 syncSource，若有則檢查分頁是否存在再更新監聽目標顯示
-  const syncSource = WebTextSync.getStoredSyncSource()
-    try {
-      chrome.tabs.get(syncSource.id, (tab) => {
+  // 檢查 local storage 是否有 syncSource，若有則檢查分頁是否存在再更新監聽目標顯示 
+  WebTextSync.getStoredSyncSource().then(data => {
+      chrome.tabs.get(data.id, (tab) => {
+        console.log('220:', tab);
         if (chrome.runtime.lastError || !tab) {
-          console.log('syncSource.id 對應分頁不存在，跳過更新監聽目標');
-          return;
+          throw new Error(`syncSource.id 對應分頁不存在，ID=${data.id}`);
         }
-		const title = syncSource.title || new URL(tab.url).hostname;
+		const title = data.title || new URL(tab.url).hostname;
         updateMonitorSelected( title );
         console.log('已從 local storage 載入 syncSource 並更新監聽目標:', title);
       });
-    } catch (e) { }
+  })
+  .catch(err => {
+    console.warn('載入 syncSource 失敗:', err.message);
+  });
 }
+
+// 載入並顯示所有輸出目標
+function loadOutputTargets() {
+  chrome.storage.local.get(['syncTargets'], function(result) {
+    if (chrome.runtime.lastError) { // 這是在初始化, 所以要靜默處理
+      // console.error('載入 syncTargets 失敗:', chrome.runtime.lastError);
+      // setStatus('載入輸出目標失敗');
+      return;
+    }
+    
+    const syncTargetsArray = result.syncTargets || [];
+    console.log('載入的 syncTargets:', syncTargetsArray);
+    
+    // 清空現有列表
+    outputTargetList.innerHTML = '';
+    
+    if (syncTargetsArray.length === 0) {
+      // 沒有輸出目標時顯示提示
+      outputTargetList.innerHTML = outputTargetListEmpty;
+      console.log('沒有找到輸出目標');
+    } else {
+      // 遍歷所有 syncTargets 並添加到列表
+      syncTargetsArray.forEach(target => {
+        if (target && target.id && target.title) {
+          // 檢查分頁是否仍然存在
+          chrome.tabs.get(target.id, (tab) => {
+            if (chrome.runtime.lastError || !tab) {
+              console.warn(`分頁 ${target.id} 不存在，跳過載入: ${target.title}`);
+              // 可選：從 storage 中移除無效的目標
+              removeInvalidTarget(target.id);
+            } else {
+              // 分頁存在，添加到列表
+              addOutputTargetItem(target.id, target.title);
+              console.log(`已載入輸出目標: ${target.title} (ID: ${target.id})`);
+            }
+          });
+        } else {
+          console.warn('無效的 syncTarget 項目:', target);
+        }
+      });
+      
+      // console.log(`已載入 ${syncTargetsArray.length} 個輸出目標`);
+    }
+  });
+}
+
+// 移除無效的輸出目標（分頁已關閉的）
+function removeInvalidTarget(targetId) {
+  chrome.storage.local.get(['syncTargets'], function(result) {
+    let syncTargetsArray = result.syncTargets || [];
+    const originalLength = syncTargetsArray.length;
+    
+    // 過濾掉無效的目標
+    syncTargetsArray = syncTargetsArray.filter(item => item.id !== targetId);
+    
+    if (syncTargetsArray.length < originalLength) {
+      chrome.storage.local.set({ syncTargets: syncTargetsArray }, function() {
+        if (chrome.runtime.lastError) {
+          console.error('移除無效目標時發生錯誤:', chrome.runtime.lastError);
+        } else {
+          console.log(`已自動移除無效的輸出目標 ID: ${targetId}`);
+        }
+      });
+    }
+  });
+}
+
 
 // 初始化
 window.onload = () => {
   loadMonitorSelected();
-  // loadOutputTargets();
+  loadOutputTargets();
 };

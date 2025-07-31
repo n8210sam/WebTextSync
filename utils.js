@@ -47,6 +47,19 @@ const chromeArray = {
     });
   },
 
+  getArrayAsync(key) {
+    const storage = this.getStorage();
+    return new Promise((resolve, reject) => {
+      storage.get([key], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result[key] || []);
+        }
+      });
+    });
+  },
+
   saveMap(key, map, callback) {
     const array = Array.from(map.values());
     this.getStorage().set({ [key]: array }, () => {
@@ -105,13 +118,22 @@ const WebTextSync = {
   // WebTextSync.syncTarget return 網站專用對話框;
 
   getStoredSyncSource(key = 'syncSource') { // syncSource
-	chrome.storage.local.get(key', (result) => {
-	  if (chrome.runtime.lastError) {
-		console.error('讀取錯誤:', chrome.runtime.lastError);
-		return false;
-	  }
-	  return result[key];
-	});
+    return new Promise((resolve, reject) => { // 注意!! chrome.storage.local.get 是非同步處理
+      chrome.storage.local.get([key], (result) => {
+        console.log('123 key:', key, result);
+        if (chrome.runtime.lastError) {
+          console.error(`讀取 ${key} 錯誤:`, chrome.runtime.lastError);
+          reject(chrome.runtime.lastError);
+          return;
+        }
+		const data = result[key];
+	    if (!data || (!data.id && 'syncSource'==key )) {
+		  return reject(new Error(`syncSource 資料不存在或格式錯誤: ${JSON.stringify(data)}`));
+		}
+        console.log('132 data:', data);
+        resolve(data);
+      });
+    });
   },
 
   getSyncTarget(searchStr) { // SyncTarget

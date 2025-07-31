@@ -51,6 +51,7 @@ WebTextSync/
 		初始化：
 			載入時，從 chrome.storage.local 讀取並顯示已設定的監聽和同步輸出目標。
 			chrome.storage.local.get(['syncSource'],()=>{})
+			改用  WebTextSync.getStoredSyncSource().then(data => {}
 
 		設定監聽/輸出按鈕事件：
 			當用戶點擊「設定監聽目標」(monitorBtn) 或「新增同步輸出目標」(outputBtn) 按鈕時：
