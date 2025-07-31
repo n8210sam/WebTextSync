@@ -3,6 +3,7 @@
 const monitorBtn = document.getElementById('monitorBtn');
 const cancelMonitorBtn = document.getElementById('cancelMonitorBtn');	 
 const outputBtn = document.getElementById('outputBtn');
+const testSyncBtn = document.getElementById('testSyncBtn');
 const monitorSelectedSpan = document.getElementById('monitorSelected');
 const outputTargetList = document.getElementById('outputTargetList');
 const outputTargetListEmpty = '<li id="emptyOutputTargetList">尚無輸出目標</li>';
@@ -99,7 +100,7 @@ function removeOutputTarget(event, id) {
   }
 }
 
-// 新增單個輸出目標項目
+// 輸出項目清單 新增單個
 function addOutputTargetItem(id,title) {
   // 如果是第一個項目且列表為空，先清空提示文字
   if (document.getElementById("emptyOutputTargetList")) {
@@ -174,18 +175,32 @@ outputBtn.addEventListener('click', () => {
     if (tabs && tabs.length > 0) {} else { return false; };
   
     const currentTabId = tabs[0].id;
-    chrome.tabs.sendMessage(currentTabId, {action: "syncOutput"} );
     const title = tabs[0].title.trim() || new URL(tabs[0].url).hostname;
   
-    if (!window.syncTarget) {
-	  chrome.runtime.sendMessage({action: "selectElement", mode: "output"});
-      setStatus('請在頁面點擊以新增輸出目標...');
-
-	} else {
-	  addSyncTarget(currentTabId,title, window.syncTarget );
-    }
+    // 直接觸發選擇元素模式
+    chrome.runtime.sendMessage({action: "selectElement", mode: "output"});
+    setStatus('請在頁面點擊以新增輸出目標...');
+    
+    // 不立即關閉 popup，等待用戶選擇
 	
   }); // chrome.tabs.query
+});
+
+// 測試同步功能按鈕
+testSyncBtn.addEventListener('click', () => {
+  const testData = `測試同步文字 - ${new Date().toLocaleTimeString()}`;
+  
+  chrome.runtime.sendMessage({
+    action: "syncOutput", 
+    data: testData
+  });
+  
+  setStatus(`✅ 已發送測試同步: ${testData}`);
+  
+  // 3秒後恢復狀態
+  setTimeout(() => {
+    setStatus('選擇監聽目標 或 新增輸出目標');
+  }, 3000);
 });
 
 // 監聽來自 background script 的消息
@@ -207,7 +222,48 @@ chrome.runtime.onMessage.addListener((msg) => {
 	  
   } else if (msg.action === 'selectedElement') {
     console.log('處理 selectedElement 消息');
-    handleMessage(msg);
+    
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs && tabs.length > 0) {
+        const currentTabId = tabs[0].id;
+        const title = tabs[0].title.trim() || new URL(tabs[0].url).hostname;
+        
+        if (msg.mode === 'output' && msg.selector) {
+          console.log('新增輸出目標:', msg.selector);
+          
+          // 檢查是否與監聽來源相同
+          WebTextSync.getStoredSyncSource()
+            .then(syncSource => {
+              if (syncSource && syncSource.id === currentTabId) {
+                console.log('[WebTextSync] 輸出目標與監聽來源相同，允許設定但會防循環');
+                setStatus('⚠️ 已新增輸出目標（與監聽來源相同，已防循環）');
+              } else {
+                setStatus('✅ 已新增輸出目標');
+              }
+              
+              addSyncTarget(currentTabId, title, msg.selector);
+              
+              // 延遲關閉 popup 讓用戶看到成功訊息
+              setTimeout(() => { 
+                if (window && !window.closed) {
+                  window.close(); 
+                }
+              }, 3000);
+            })
+            .catch(() => {
+              // 沒有監聽來源，正常新增
+              addSyncTarget(currentTabId, title, msg.selector);
+              setStatus('✅ 已新增輸出目標');
+              
+              setTimeout(() => { 
+                if (window && !window.closed) {
+                  window.close(); 
+                }
+              }, 3000);
+            });
+        }
+      }
+    });
   }
 });
 

@@ -67,7 +67,8 @@ console.log('selector_injector.js 載入');
             }, '*');
           }
           
-          sendMessageToPopup({
+          // 發送消息到 background script，再轉發到 popup
+          chrome.runtime.sendMessage({
             action: 'selectedElement',
             mode: currentMode,
             selector: selector

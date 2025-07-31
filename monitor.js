@@ -36,7 +36,9 @@ const WebTextMonitor = (() => {
       // mutation.type 類型分為 attributes childList characterData
       if (mutation.type === "characterData") {
         console.log("文字變更：", mutation.target.data);
-        chrome.runtime.sendMessage({ action: "syncOutput", data: mutation.target.data });
+        
+        // 使用安全的消息發送函數
+        safeSendMessage({ action: "syncOutput", data: mutation.target.data });
       }
     }
   }
@@ -73,6 +75,33 @@ const WebTextMonitor = (() => {
       // 移除閃爍眼睛
       removeBlinkingEyeFromTitle();
       console.log("[WebTextSync] MutationObserver 已停止");
+    }
+  }
+  
+  // 檢查 extension context 是否有效
+  function isExtensionContextValid() {
+    try {
+      return chrome.runtime && chrome.runtime.id;
+    } catch (error) {
+      return false;
+    }
+  }
+  
+  // 安全的消息發送函數
+  function safeSendMessage(message, callback) {
+    if (!isExtensionContextValid()) {
+      console.warn("[WebTextSync] Extension context invalidated, stopping observer");
+      stopObserver();
+      return false;
+    }
+    
+    try {
+      chrome.runtime.sendMessage(message, callback);
+      return true;
+    } catch (error) {
+      console.warn("[WebTextSync] Extension context error:", error.message);
+      stopObserver();
+      return false;
     }
   }
 
@@ -112,11 +141,50 @@ const WebTextMonitor = (() => {
     }
   }
 
+  // 獲取當前監聽內容
+  function getCurrentMonitorContent() {
+    // 嘗試從網站專用的 syncTarget 獲取內容
+    if (WebTextSync.syncTarget) {
+      try {
+        const targetElement = WebTextSync.syncTarget();
+        if (targetElement) {
+          let content = '';
+          if (targetElement.contentEditable === 'true') {
+            content = targetElement.innerHTML || targetElement.textContent || '';
+          } else if (targetElement.tagName === 'INPUT' || targetElement.tagName === 'TEXTAREA') {
+            content = targetElement.value || '';
+          } else {
+            content = targetElement.textContent || '';
+          }
+          console.log('[WebTextSync] 獲取到監聽內容:', content);
+          return content;
+        }
+      } catch (error) {
+        console.warn('[WebTextSync] 獲取監聽內容時發生錯誤:', error);
+      }
+    }
+    
+    console.log('[WebTextSync] 無法獲取監聽內容');
+    return '';
+  }
+
   // 初始化監聽指令
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "initMonitor") startMonitoring();
-    return true;
-  });
+  try {
+    if (chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === "initMonitor") {
+          startMonitoring();
+        } else if (message.action === "getCurrentContent") {
+          // 回應當前內容請求
+          const content = getCurrentMonitorContent();
+          sendResponse({ content: content });
+        }
+        return true;
+      });
+    }
+  } catch (error) {
+    console.warn('[WebTextSync] Cannot set up message listener:', error.message);
+  }
 
   console.log('[WebTextSync] monitor.js 載入');
 
@@ -137,17 +205,17 @@ const WebTextMonitor = (() => {
         }
         
         // 檢查當前分頁是否為監聽來源分頁
-        chrome.runtime.sendMessage({ action: "getTabId" }, (response) => {
+        safeSendMessage({ action: "getTabId" }, (response) => {
           if (chrome.runtime.lastError) {
             console.error('[WebTextSync] 無法取得當前分頁 ID:', chrome.runtime.lastError);
             return;
           }
           
           if (response && response.tabId === syncSource.id) {
-            // console.log('[WebTextSync] 當前分頁是監聽來源，自動啟動監聽');
+            console.log('[WebTextSync] 當前分頁是監聽來源，自動啟動監聽');
             startMonitoring();
           } else {
-            // console.log(`[WebTextSync] 當前分頁 (${response?.tabId}) 不是監聽來源 (${syncSource.id})，不啟動監聽`);
+            console.log(`[WebTextSync] 當前分頁 (${response?.tabId}) 不是監聽來源 (${syncSource.id})，不啟動監聽`);
           }
         });
       })
@@ -161,7 +229,7 @@ const WebTextMonitor = (() => {
     document.addEventListener('DOMContentLoaded', checkAndAutoStartMonitoring);
   } else {
     // 如果頁面已經載入完成，直接執行檢查
-    setTimeout(checkAndAutoStartMonitoring, 100); // 稍微延遲確保所有腳本都載入完成
+    setTimeout(checkAndAutoStartMonitoring, 200); // 稍微延遲確保所有腳本都載入完成
   }
 
   // 將公開 API 封裝

@@ -136,7 +136,7 @@ const WebTextSync = {
     });
   },
 
-  getSyncTarget(searchStr) { // SyncTarget
+  getSyncTarget(searchStr) { // get SyncTarget
 	const site_dict = [
 	  { name: 'gemini' , url: 'gemini.google.com/app', target: 'div.ql-editor.textarea.new-input-ui' },
 	  { name: 'chatgpt' , url: 'chatgpt.com', target: 'div.ProseMirror#prompt-textarea[contenteditable="true"]' },

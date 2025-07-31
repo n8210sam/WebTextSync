@@ -46,6 +46,8 @@ WebTextSync/
 		不能用 import 或 type="module" 的 <script>
 
 
+popup.html 設定功能 Web UI
+
 🎯 popup.js ：處理 popup.html 的 UI 邏輯。
 	主要職責：
 		初始化：
