@@ -46,4 +46,56 @@ WebTextSync/
 		不能用 import 或 type="module" 的 <script>
 
 
+🎯 popup.js ：處理 popup.html 的 UI 邏輯。
+	主要職責：
+		初始化：
+			載入時，從 chrome.storage.local 讀取並顯示已設定的監聽和同步輸出目標。
+			chrome.storage.local.get(['syncSource'],()=>{})
+
+		設定監聽/輸出按鈕事件：
+			當用戶點擊「設定監聽目標」(monitorBtn) 或「新增同步輸出目標」(outputBtn) 按鈕時：
+				向 background.js 發送訊息，請求進入元素選擇模式，並告知是設定監聽還是輸出目標。
+					chrome.runtime.sendMessage({action: "selectElement", mode: "monitor", tabsid: currentTabId});
+				更新 UI 狀態，提示用戶去網頁上點選元素。
+				
+		
+		接收選定元素回饋：
+			監聽來自 background.js 的訊息，當元素選擇完成後，更新 popup.html 上的顯示。
+			顯示選定目標的網址和簡要描述。
+			
+		管理目標列表：提供刪除已設定目標的功能。
+
+🧠 background.js ：背景廣播任務 (Service Worker)
+	這是擴充功能的核心控制器，負責協調各個模組之間的通訊和數據流。
+	主要職責：
+		監聽擴充功能圖示點擊 (來自 popup.js)：
+			當 popup.js 要求進入元素選擇模式時，background.js 會接收到訊息。
+			使用 chrome.scripting.executeScript 將 selector_injector.js 注入到當前活躍的標籤頁。
+			設定一個一次性的監聽器，等待 selector_injector.js 返回選定的元素資訊。
+		處理選定元素資訊 (來自 selector_injector.js)：
+			接收到選定元素的 CSS 選擇器、當前網址、初始文字等資訊。
+				if (msg.action === "selectElement") 
+					chrome.tabs.sendMessage(tabs[0].id, { action: "startSelecting", mode: msg.mode })
+			網址處理： 將提取的網址中，最後一個 "/" 後面的字段換成 "*" 來匹配該網站所有網頁。例如：https://www.example.com/some/path/page.html 會變成 https://www.example.com/some/path/*。這將作為儲存的目標網址模式。
+			智能選擇器判斷： 根據處理後的網址，判斷是否需要載入特定的智能兼容網頁元素過濾器（如 content_gemini.js 或 content_chatgpt.js）。這可以通過一個內部映射表來實現。
+			將選定的目標（包括類型：監聽或同步輸出，網址模式，原始選擇器，以及智能過濾器路徑）儲存到 chrome.storage.local。
+			將處理結果回傳給 popup.js。
+		監聽標籤頁更新：
+			使用 chrome.tabs.onUpdated 監聽所有標籤頁的狀態變化（例如載入完成）。
+			當有標籤頁更新時，從 chrome.storage.local 讀取所有已設定的監聽和同步輸出目標。
+			對於每個目標：
+			檢查當前標籤頁的 URL 是否與目標的網址模式匹配。
+			如果匹配，則動態注入相應的內容腳本：
+			如果存在智能過濾器，先注入 content_<site_name>.js。
+			然後根據目標類型，注入 monitor.js 或 output.js。
+			將儲存的原始選擇器和智能過濾器路徑作為參數傳遞給注入的腳本。
+		文字數據中繼 (來自 monitor.js / 傳送至 output.js)：
+			監聽來自 monitor.js 的訊息（包含監聽到的文字）。
+			從 chrome.storage.local 獲取所有已設定的同步輸出目標。
+			對於每個匹配的同步輸出目標，使用 chrome.tabs.sendMessage 將文字數據發送到對應的 output.js 實例。
+		錯誤處理與日誌：
+			對所有 chrome.scripting 和 chrome.storage 操作進行錯誤處理。
+			在控制台記錄重要的操作和錯誤信息，用於偵錯。
+
+
 

@@ -13,7 +13,8 @@
 		ChatGPT 教我:
 			Chrome 會根據定義順序先後注入 JS
 			已經透過 content_scripts 注入網頁中，則不需要也不應該再在 web_accessible_resources 中重複宣告它。
-			
+
+
 
 	handleMutations 是什麼？
 		在 MutationObserver 的回呼函數中：
@@ -70,6 +71,7 @@ WebTextSync.startObserver = function () {
 				</code>
 
 
+
 	累積所有 2 秒內的變化再一起處理:
 		<code>
 let mutationBuffer = [];
@@ -88,6 +90,7 @@ const debouncedMutationHandler = WebTextSync.Debounce(() => {
 		</code>
 
 
+
 	(type) => () => { 是什麼?
 		這段語法是 JavaScript 的 箭頭函式（Arrow Function），(type) => () => { ... } 是一個 高階函式（Higher-Order Function），意思是：
 			<code>
@@ -97,6 +100,7 @@ const markUserInput = (type) => () => {
 };
 			</code>
 			markUserInput 是一個「會傳回另一個函式」的函式。
+
 
 
 	屬性變更： class => ProseMirror 代表什麼?
@@ -114,6 +118,7 @@ const markUserInput = (type) => () => {
 		| 透過 JS 變更 `.value`         | ❌ 否（需手動觸發事件）|
 
 
+
 2025/07/31
 	傳送訊息給當前作用中的分頁 (msg, sender, sendResponse)
 		<code>
@@ -123,6 +128,8 @@ chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
   });
 });
 		</code>
+		溝通使用 chrome.runtime.sendMessage 與 chrome.runtime.onMessage
+
 
 
 	sessionStorage.setItem() 只能直接儲存字串。如果想儲存 JavaScript 物件，需要轉換成字串格式
@@ -166,6 +173,59 @@ console.log("物件已儲存為字串:", objectAsString);
 		status (string, optional): 分頁的載入狀態。常見的值有 "loading" 或 "complete"。
 		incognito (boolean): 表示這個分頁是否處於無痕模式。
 		successorTabId (integer, optional): 如果這個分頁是通過「新分頁」按鈕或從另一個分頁連結打開的，則這是新分頁的前一個分頁的 ID。
-	
-	
-	
+
+
+
+	學習開發-chrome-extension-v3
+		https://medium.com/@alexian853/%E5%BE%9E%E9%A0%AD%E9%96%8B%E5%A7%8B%E5%AD%B8%E7%BF%92%E9%96%8B%E7%99%BC-chrome-extension-v3-%E7%89%88%E6%9C%AC-96d7fdfc00d1
+		<code>
+// 複製按鈕實作
+async function copyMessageToClipboard() {
+  const { reviewTemplate } = await chrome.storage.sync.get(['reviewTemplate']);
+  const prLinkSymbol = /{PR_LINK}/;
+  const jiraLinkSymbol = /{JIRA_CARD}/;
+  // 一個 PR 可能會關聯多張 JIRA 卡片，故用 Array 包裝
+  const jiraLinks = [...document.querySelectorAll('h1 [data-link-key="dvcs-connector-issue-key-linker"]')];
+  const jiraLinkPlainText = jiraLinks.map((link) => link.innerHTML).join('|');
+  const jiraLinkHtmlText = jiraLinks.map((link) =>
+    `<a href="${link.href}">${link.innerHTML}</a>`).join(' | ');
+
+  // 使用 ClipboardItem 建立可複製的內容，使用 .replace 方法替換要複製的內容
+  const clipboardItem = new ClipboardItem({
+    "text/plain": new Blob(
+      [
+        reviewTemplate
+          .replace(prLinkSymbol, 'PR')
+          .replace(jiraLinkSymbol, jiraLinkPlainText)
+      ],
+      { type: "text/plain" }
+    ),
+    "text/html": new Blob(
+      [
+        reviewTemplate
+          .replace(/\n/g, '<br>')
+          .replace(prLinkSymbol, `<a href="${location.href}">PR</a>`)
+          .replace(jiraLinkSymbol, jiraLinkHtmlText)
+      ],
+      { type: "text/html" }
+    ),
+  });
+
+ // 將複製內容寫入剪貼簿
+  return navigator.clipboard.write([clipboardItem]);
+}
+		</code>
+
+
+
+	📌 事件傳遞流程分為三階段：
+		Capturing Phase（捕獲）：由外層 DOM → 內層元素
+		Target Phase：事件抵達實際觸發的目標元素
+		Bubbling Phase（冒泡）：由內層元素 → 外層 DOM 傳回
+	預設是冒泡，除非你明確指定 true 才會進入捕獲階段。
+		document.addEventListener('click', onClick, true);
+		當使用者點擊頁面中任何元素，這個 onClick 函式都會搶先在 捕獲階段 被觸發，早於其他用 false 註冊的監聽器。
+
+
+
+

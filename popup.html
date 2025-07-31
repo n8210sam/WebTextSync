@@ -77,11 +77,37 @@
     border: 1px gray solid;
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   }
+  /* 帶有“X”按鈕的 HTML ul 清單 */
+	ul {
+		list-style-type: none; /* 移除預設的清單符號 */
+		padding: 0;
+	}
+	li {
+		padding: 8px;
+		margin-bottom: 5px;
+		background-color: #f0f0f0;
+		border: 1px solid #ddd;
+		display: flex; /* 讓內容和按鈕在同一行 */
+		justify-content: space-between; /* 將內容和按鈕分開到兩端 */
+		align-items: center; /* 垂直置中 */
+	}
+	.remove-btn {
+		background-color: #ff4d4d;
+		color: white;
+		border: none;
+		padding: 5px 10px;
+		cursor: pointer;
+		border-radius: 3px;
+		font-weight: bold;
+	}
+	.remove-btn:hover {
+		background-color: #cc0000;
+	}
 </style>
 </head>
 <body>
 
-<div id="status"></div>
+<div id="status">選擇監聽目標 或 新增輸出目標</div>
 
 <div class="button-row">
   <button id="monitorBtn">選擇監聽目標</button>
@@ -96,6 +122,7 @@
   </ul>
 </div>
 
+<script src="utils.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>
