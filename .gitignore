@@ -1,0 +1,31 @@
+# Users , backup files
+.idea/
+*.bak
+selector_injector_copy.js
+selector_injector_legacy.js
+# 
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Chrome Extension build artifacts
+dist/
+build/
+*.crx
+
+# OS/Editor files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Env files
+.env
+.env.*

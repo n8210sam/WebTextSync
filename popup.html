@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<title>WebTextSync 多輸出目標管理</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    padding: 10px;
+    width: 380px;
+  }
+  .button-row {
+    margin-bottom: 12px;
+  }
+  button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 5px;
+    background-color: #4caf50;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    transition: background-color 0.3s ease;
+    margin-right: 8px;
+  }
+  button:hover {
+    background-color: #45a049;
+  }
+  /* 取消監聽按鈕的紅色風格 */
+  #cancelMonitorBtn {
+    background-color: #f44336;
+    display: none; /* 初始隱藏 */
+  }
+  #cancelMonitorBtn:hover {
+    background-color: #d32f2f;
+  }
+  .output-target-list {
+    list-style: none;
+    padding: 0;
+    max-height: 140px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  .output-target-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+    word-break: break-all;
+  }
+  .output-target-item:last-child {
+    border-bottom: none;
+  }
+  .btn-delete {
+    background-color: #f44336;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .btn-delete:hover {
+    background-color: #d32f2f;
+  }
+  #status {
+    font-size: 16px;
+    color: #333;
+    margin: 8px;
+    margin-bottom: 16px;
+    padding: 10px;
+    background-color: yellow;
+    border-radius: 6px;
+    border: 1px gray solid;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+</style>
+</head>
+<body>
+
+<div id="status"></div>
+
+<div class="button-row">
+  <button id="monitorBtn">選擇監聽目標</button>
+  <span id="monitorSelected">(尚未選擇)</span>
+  <button id="cancelMonitorBtn" title="取消監聽">取消監聽</button>
+</div>
+
+<div class="button-row">
+  <button id="outputBtn">新增輸出目標</button>
+  <ul id="outputTargetList" class="output-target-list" style="flex-grow: 1; margin-top: 8px;">
+    <!-- 動態生成多個輸出目標 -->
+  </ul>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

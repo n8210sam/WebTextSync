@@ -1,0 +1,43 @@
+// manifest.json (改回非 module 版)
+{
+  "manifest_version": 3,
+  "name": "WebTextSync",
+  "version": "1.0",
+  "description": "跨頁同步輸入的 Chrome 擴充功能",
+  "permissions": ["scripting", "activeTab", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+  , "web_accessible_resources": [ // 宣告這些資源可被內容腳本存取
+    {
+      "resources": [
+        "utils.js",
+        "selector_injector.js",
+        "monitor.js",
+        "output.js",
+        // "jquery-3.7.1.min.js", 未用到, 暫時移除
+        "content_gemini.js",
+        "content_chatgpt.js"
+      ],
+      "matches": ["<all_urls>"] // 允許在所有網址下被存取
+    }
+  ]
+  /* 這段會導致 selector_injector.js 重複執行
+  , "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["utils.js","selector_injector.js","monitor.js","output.js"],
+      "run_at": "document_end"
+    }
+  ]
+  */
+}
