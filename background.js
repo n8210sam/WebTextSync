@@ -1,84 +1,58 @@
 // background.js
-let tabs = [];
+let syncSourceId = null;
+
+// 監聽 port 以使用長連線 connect() : 這是設計的 fallback，會由 content script 再改用 chrome.runtime.connect → background 的 onConnect 查詢 URL。
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "getTabIdPort") {
+    port.onMessage.addListener((msg) => {
+      if (msg.action === "getTabId" && msg.url) {
+        chrome.tabs.query({ url: msg.url }, (tabs) => {
+          if (tabs.length > 0) {
+            port.postMessage({ tabId: tabs[0].id });
+          } else {
+            port.postMessage({ tabId: null });
+          }
+        });
+      }
+    });
+  }
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('background.js 收到消息:', msg, 'from:', sender);
   
   // 處理來自 content script 的 saveSelector 請求
   if (msg.action === "getTabId") {
-    // 當收到 "getTabId" 的請求時，sender.tab 物件會包含發送者（也就是內容腳本所在的分頁）的資訊
-    if (sender.tab && sender.tab.id) {
-      if (!tabs[sender.tab.id]) tabs[sender.tab.id] = sender.tab;
-	  sendResponse({ tabId: sender.tab.id }); // 將分頁 ID 回傳給發送者
-    } else {
-      sendResponse({ tabId: null }); // 如果無法取得，則回傳 null
-    }
-    return true; // 表示 sendResponse 會非同步調用
-  }
-  
-  if (msg.action === "setSyncTarget") { // 設定網站專用 syncTarget
-    if (sender.tab && sender.tab.id) {
-      if (!tabs[sender.tab.id]) tabs[sender.tab.id] = sender.tab;
-      if (msg.syncTarget) tabs[sender.tab.id].syncTarget = msg.syncTarget;
-    }
-  }
-  if (msg.action === "getSyncTarget") { // 取得網站專用 syncTarget
-    if (sender.tab && sender.tab.id) {
-      if (tabs[sender.tab.id] && tabs[sender.tab.id].syncTarget ) {
-	    sendResponse({ syncTarget: tabs[sender.tab.id].syncTarget });
-      } else {
-        sendResponse({ tabId: null });
-	  };
+    // sendResponse 後會由 content script 改用新增的 fallback 方案 onConnect.addListener 。
+	  if (sender.tab && sender.tab.id) {
+      sendResponse({ tabId: sender.tab.id });
     } else {
       sendResponse({ tabId: null });
     }
-    return true;
-  }
-  
-  if (msg.action === "saveSelector") {
-    console.log('轉發 saveSelector 到 popup');
-    // 轉發到 popup
-    chrome.runtime.sendMessage(msg);
-    return;
   }
   
   if (msg.action === "selectedElement") {
     console.log('轉發 selectedElement 到 popup');
     // 轉發到 popup
     chrome.runtime.sendMessage(msg);
-    return;
+  }
+  if (msg.action === "saveSelector") {
+    console.log('轉發 saveSelector 到 popup');
+    // 轉發到 popup
+    chrome.runtime.sendMessage(msg);
   }
   
-  // 請求監聽來源的當前內容
-  if (msg.action === "requestCurrentContent") {
-    console.log('[WebTextSync] 收到請求當前內容，目標分頁:', msg.sourceTabId);
-    
-    if (msg.sourceTabId) {
-      chrome.tabs.sendMessage(msg.sourceTabId, { 
-        action: "getCurrentContent" 
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[WebTextSync] 無法從監聽來源獲取內容:', chrome.runtime.lastError.message);
-          sendResponse({ content: null });
-        } else {
-          console.log('[WebTextSync] 成功獲取監聽來源內容');
-          sendResponse(response);
-        }
-      });
-    } else {
-      sendResponse({ content: null });
-    }
-    return true; // 保持消息通道開放以進行異步回應
-  }
   
   // 選擇(監聽/輸出)目標
   if (msg.action === "selectElement") {
+    if (msg.syncSourceId) syncSourceId = msg.syncSourceId; // 註冊為 background 靜態 syncSourceId
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs && tabs.length > 0) {
         console.log(`background.js @_@ action="${msg.action}"`);
         chrome.tabs.sendMessage(tabs[0].id, { action: "startSelecting", mode: msg.mode });
       }
     });
+    return true; // 保持消息通道開放
   }
 
   // 監聽文字
@@ -88,6 +62,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         chrome.tabs.sendMessage(tabs[0].id, { action: "initMonitor" });
       }
     });
+    return true; // 保持消息通道開放
   }
 
   // 取消監聽
@@ -97,6 +72,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         chrome.tabs.sendMessage(tabs[0].id, { action: "cancelMonitor" });
       }
     });
+    return true; // 保持消息通道開放
   }
 
   // 同步輸出文字
@@ -155,6 +131,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
       });
     });
+    return true; // 保持消息通道開放
   }
   // 想在某處觸發輸出同步行為時，比如 popup.js 或 background.js，直接執行：
   // chrome.runtime.sendMessage({ action: "syncOutput" });
