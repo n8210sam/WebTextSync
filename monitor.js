@@ -16,7 +16,7 @@ const WebTextMonitor = (() => {
 		  target: event?.target // 觸發的 DOM 元素
         }
     };
-    // console.log(`[WebTextSync] 使用者操作：${type} @ ${new Date(lastUserAction.time).toLocaleTimeString()}`);
+    // console.log(`[ monitor.js ] 使用者操作：${type} @ ${new Date(lastUserAction.time).toLocaleTimeString()}`);
   }
 
   // 🔁 記錄使用者操作類型
@@ -25,20 +25,41 @@ const WebTextMonitor = (() => {
     document.addEventListener("mousedown", (e) => markUserAction("mousedown", e));
     document.addEventListener("paste", (e) => { // 記錄 paste (包括 右鍵 或 Ctrl/Cmd + V 貼上)
       let pasted = (e.clipboardData || window.clipboardData).getData("text");
-      console.log("[WebTextSync] 貼上內容：", pasted, e.clipboardData || window.clipboardData);
+      console.log("[ monitor.js ] 貼上內容：", pasted, e.clipboardData || window.clipboardData);
       markUserAction("paste", e);
     });
   }
 
+  function stopObserver() {
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+      // 移除閃爍眼睛
+      removeBlinkingEyeFromTitle();
+      console.log("[ monitor.js ] MutationObserver 已停止");
+    }
+  }
+  
   function handleMutations(mutationsList) {
-    console.log(`[WebTextSync] 偵測 DOM 變動，最近操作：`, lastUserAction, mutationsList);
+    console.log(`[ monitor.js ] 偵測 DOM 變動，最近操作：`, lastUserAction, mutationsList);
     for (const mutation of mutationsList) {
       // mutation.type 類型分為 attributes childList characterData
       if (mutation.type === "characterData") {
         console.log("文字變更：", mutation.target.data);
+        const txt = mutation.target.data.trim();
         
         // 使用安全的消息發送函數
-        safeSendMessage({ action: "syncOutput", data: mutation.target.data });
+        WebTextSync.safeSendMessage({
+          action: "syncOutput",
+          sourceTabId: WebTextSync.currentTabId,
+          data: txt
+        }).then(response => {
+          console.log("safeSendMessage 成功回應：", response);
+        }).catch(error => {
+          console.log("safeSendMessage 發生錯誤：", error.message);
+          stopObserver();
+        });
+
       }
     }
   }
@@ -59,181 +80,116 @@ const WebTextMonitor = (() => {
 
     // 添加閃爍眼睛到網頁標題
     addBlinkingEyeToTitle();
-    console.log("[WebTextSync] MutationObserver 已啟動");
+    console.log("[ monitor.js ] MutationObserver 已啟動");
   }
 
   function startMonitoring() {
     setupUserInputTracking(); // 🔁 記錄使用者操作類型
     startObserver(); // 🚀 啟用監聽
-    console.log("[WebTextSync] 收到並啟用 initMonitor");
-  }
-
-  function stopObserver() {
-    if (observer) {
-      observer.disconnect();
-      observer = null;
-      // 移除閃爍眼睛
-      removeBlinkingEyeFromTitle();
-      console.log("[WebTextSync] MutationObserver 已停止");
-    }
-  }
-  
-  // 檢查 extension context 是否有效
-  function isExtensionContextValid() {
-    try {
-      return chrome.runtime && chrome.runtime.id;
-    } catch (error) {
-      return false;
-    }
-  }
-  
-  // 安全的消息發送函數
-  function safeSendMessage(message, callback) {
-    if (!isExtensionContextValid()) {
-      console.warn("[WebTextSync] Extension context invalidated, stopping observer");
-      stopObserver();
-      return false;
-    }
-    
-    try {
-      chrome.runtime.sendMessage(message, callback);
-      return true;
-    } catch (error) {
-      console.warn("[WebTextSync] Extension context error:", error.message);
-      stopObserver();
-      return false;
-    }
+    console.log("[ monitor.js ] 收到並啟用 initMonitor");
   }
 
   // 添加閃爍眼睛到標題
-  let originalTitle = null;
-  let eyeBlinkInterval = null;
+  let eyeBlinkInterval = 'eyeBlinkInterval';
   
   function addBlinkingEyeToTitle() {
-    if (originalTitle === null) {
-      originalTitle = document.title;
-    }
-    
-    // 清除之前的間隔
-    if (eyeBlinkInterval) {
-      clearInterval(eyeBlinkInterval);
-    }
-    
-    let isEyeOpen = true;
-    eyeBlinkInterval = setInterval(() => {
-      const eyeIcon = isEyeOpen ? '😉' : '🔥'; // : '👁👁️😉👀🤌🏻🔥';
-      document.title = `${eyeIcon} ${originalTitle}`;
-      isEyeOpen = !isEyeOpen;
-    }, 1000); // 每秒切換一次
-    
-    console.log("[WebTextSync] 已添加閃爍眼睛到標題");
+    WebTextSync.setTitleAnimation(eyeBlinkInterval, i => (i % 2 === 0 ? '😉' : '🔥'), 1000);
+    // console.log("[ monitor.js ] 已添加閃爍眼睛到標題 ... 👁👁️😉👀🤌🏻🔥 ");
   }
   
   function removeBlinkingEyeFromTitle() {
-    if (eyeBlinkInterval) {
-      clearInterval(eyeBlinkInterval);
-      eyeBlinkInterval = null;
-    }
-    
-    if (originalTitle !== null) {
-      document.title = originalTitle;
-      console.log("[WebTextSync] 已移除閃爍眼睛，恢復原標題");
-    }
+    WebTextSync.removeTitleAnimation(eyeBlinkInterval); 
   }
+
 
   // 獲取當前監聽內容
   function getCurrentMonitorContent() {
+    console.log('[ monitor.js ] 開始獲取監聽內容...');
+    
     // 嘗試從網站專用的 syncTarget 獲取內容
-    if (WebTextSync.syncTarget) {
+    console.log('[ monitor.js ] WebTextSync.syncElement ', WebTextSync.syncElement);
+    if (WebTextSync.syncElement) {
       try {
-        const targetElement = WebTextSync.syncTarget();
+        const targetElement = WebTextSync.syncElement();
+        console.log('[ monitor.js ] 目標元素:', targetElement);
+        
         if (targetElement) {
           let content = '';
           if (targetElement.contentEditable === 'true') {
             content = targetElement.innerHTML || targetElement.textContent || '';
+            console.log('[ monitor.js ] 從 contentEditable 元素獲取內容');
           } else if (targetElement.tagName === 'INPUT' || targetElement.tagName === 'TEXTAREA') {
             content = targetElement.value || '';
+            console.log('[ monitor.js ] 從 INPUT/TEXTAREA 元素獲取內容');
           } else {
             content = targetElement.textContent || '';
+            console.log('[ monitor.js ] 從其他元素獲取內容');
           }
-          console.log('[WebTextSync] 獲取到監聽內容:', content);
+          console.log('[ monitor.js ] 獲取到監聽內容:', content);
           return content;
+        } else {
+          console.warn('[ monitor.js ] syncTarget() 返回 null');
         }
       } catch (error) {
-        console.warn('[WebTextSync] 獲取監聽內容時發生錯誤:', error);
+        console.warn('[ monitor.js ] 獲取監聽內容時發生錯誤:', error);
       }
+    } else {
+      console.warn('[ monitor.js ] WebTextSync.syncElement 不存在');
     }
     
-    console.log('[WebTextSync] 無法獲取監聽內容');
+    console.log('[ monitor.js ] 無法獲取監聽內容');
     return '';
   }
 
-  // 初始化監聽指令
-  try {
-    if (chrome.runtime && chrome.runtime.onMessage) {
-      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === "initMonitor") {
-          startMonitoring();
-        } else if (message.action === "getCurrentContent") {
-          // 回應當前內容請求
-          const content = getCurrentMonitorContent();
-          sendResponse({ content: content });
-        }
-        return true;
-      });
-    }
-  } catch (error) {
-    console.warn('[WebTextSync] Cannot set up message listener:', error.message);
-  }
-
-  console.log('[WebTextSync] monitor.js 載入');
+  console.log('[ monitor.js ] monitor.js 載入');
 
 
   // 自動檢查並啟動監聽功能
   function checkAndAutoStartMonitoring() {
     WebTextSync.getStoredSyncSource()
       .then(syncSource => {
-        // 檢查 syncSource 是否存在且有效
-        if (!syncSource) {
-          console.log('[WebTextSync] 沒有找到 syncSource，不自動啟動監聽 ⚠️ getStoredSyncSource 應該要過濾掉這個錯誤❗');
-          return;
-        }
-        
-        if (!syncSource.id) {
-          console.log('[WebTextSync] syncSource 沒有 id，不自動啟動監聽 ⚠️ getStoredSyncSource 應該要過濾掉這個錯誤❗');
-          return;
-        }
-        
-        // 檢查當前分頁是否為監聽來源分頁
-        safeSendMessage({ action: "getTabId" }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[WebTextSync] 無法取得當前分頁 ID:', chrome.runtime.lastError);
+        // *** 不必檢查 syncSource 和 .id 是否存在且有效, getStoredSyncSource 已檢查過
+        //if (!syncSource) {
+        if (!WebTextSync.currentTabId) {
+          console.log('[ monitor.js ] 缺少 currentTabId, 重新抓取 ? ');
+          (async () => {
+            WebTextSync.currentTabId = await WebTextSync.getCurrentTabIdSafe();
+            console.log('[ monitor.js ]  currentTabId=',WebTextSync.currentTabId);
+          })();
+          
+          if (!WebTextSync.currentTabId) {
+            console.warn('[ monitor.js ] 缺少 currentTabId, 跳過監聽');
             return;
           }
+        }
           
-          if (response && response.tabId === syncSource.id) {
-            console.log('[WebTextSync] 當前分頁是監聽來源，自動啟動監聽');
-            startMonitoring();
-          } else {
-            console.log(`[WebTextSync] 當前分頁 (${response?.tabId}) 不是監聽來源 (${syncSource.id})，不啟動監聽`);
-          }
-        });
+        if (WebTextSync.currentTabId === syncSource.tabId) {
+          console.log('[ monitor.js ] 當前分頁是監聽來源，自動啟動監聽', WebTextSync.currentTabId , syncSource.tabId );
+          startMonitoring();
+        } else {
+          console.log(`[ monitor.js ] 當前分頁 (${response?.tabId}) 不是監聽來源 (${syncSource.tabId})`);
+        }
       })
       .catch(err => {
-        console.warn('[WebTextSync] 載入 syncSource 失敗:', err.message);
+        console.warn('[ monitor.js ] 載入 syncSource 失敗:', err.message);
       });
   }
   
+  if (WebTextSync.debug_mode) console.log('[ monitor.js ] 載入完成後  debug_mode On : WebTextSync.currentTabId = ',WebTextSync.currentTabId,' , .originalTitle:',WebTextSync.originalTitle,' , .currentSyncTarget:',WebTextSync.currentSyncTarget);
+  /*
   // 頁面載入完成後檢查並自動啟動監聽
   if (document.readyState === 'loading') {
+    console.log('[ monitor.js ]  document.readyState === loading  addEventListener' );
     document.addEventListener('DOMContentLoaded', checkAndAutoStartMonitoring);
   } else {
     // 如果頁面已經載入完成，直接執行檢查
+    console.log('[ monitor.js ]  setTimeout(checkAndAutoStartMonitoring, 200) ' );
     setTimeout(checkAndAutoStartMonitoring, 200); // 稍微延遲確保所有腳本都載入完成
   }
+  */
 
   // 將公開 API 封裝
   return {
-    stopObserver,
+    startMonitoring,stopObserver,getCurrentMonitorContent, checkAndAutoStartMonitoring
   };
 })();

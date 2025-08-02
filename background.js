@@ -1,5 +1,4 @@
 // background.js
-let syncSourceId = null;
 
 // 監聽 port 以使用長連線 connect() : 這是設計的 fallback，會由 content script 再改用 chrome.runtime.connect → background 的 onConnect 查詢 URL。
 chrome.runtime.onConnect.addListener((port) => {
@@ -21,35 +20,39 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('background.js 收到消息:', msg, 'from:', sender);
   
-  // 處理來自 content script 的 saveSelector 請求
   if (msg.action === "getTabId") {
     // sendResponse 後會由 content script 改用新增的 fallback 方案 onConnect.addListener 。
-	  if (sender.tab && sender.tab.id) {
+    if (sender.tab && sender.tab.id) {
       sendResponse({ tabId: sender.tab.id });
     } else {
       sendResponse({ tabId: null });
     }
+    return ;
   }
   
-  if (msg.action === "selectedElement") {
-    console.log('轉發 selectedElement 到 popup');
+  // 處理來自 content script 的 saveSelectedElement 請求
+  if (msg.action === "saveSelectedElement") {
+    console.log('轉發 saveSelectedElement 到 popup');
     // 轉發到 popup
     chrome.runtime.sendMessage(msg);
-  }
-  if (msg.action === "saveSelector") {
-    console.log('轉發 saveSelector 到 popup');
-    // 轉發到 popup
-    chrome.runtime.sendMessage(msg);
+    return ;
   }
   
   
   // 選擇(監聽/輸出)目標
   if (msg.action === "selectElement") {
-    if (msg.syncSourceId) syncSourceId = msg.syncSourceId; // 註冊為 background 靜態 syncSourceId
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs && tabs.length > 0) {
         console.log(`background.js @_@ action="${msg.action}"`);
-        chrome.tabs.sendMessage(tabs[0].id, { action: "startSelecting", mode: msg.mode });
+        chrome.tabs.sendMessage(tabs[0].id, { action: "startSelecting", mode: msg.mode , (response) => {
+          const tabId = tabs[0].id;
+          if (chrome.runtime.lastError) {
+            console.warn(`[WebTextSync] 無法發送 startSelecting 至 tab ${tabId}:`, chrome.runtime.lastError.message);
+          };
+        });
+        sendResponse({tabId: tabs[0].id}, { action: "startSelecting", mode: msg.mode });
+      } else {
+        sendResponse();
       }
     });
     return true; // 保持消息通道開放
@@ -59,8 +62,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "initMonitor") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs && tabs.length > 0) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "initMonitor" });
+        const tabId = tabs[0].id;
+        chrome.tabs.sendMessage(tabId, { action: "initMonitor" }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn(`[WebTextSync] 無法發送 initMonitor 至 tab ${tabId}:`, chrome.runtime.lastError.message);
+          }
+        });
       }
+      sendResponse({tabId: tabs[0].id}, { action: "startMonitoring", mode: msg.mode });
     });
     return true; // 保持消息通道開放
   }
@@ -69,10 +78,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "cancelMonitor") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs && tabs.length > 0) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "cancelMonitor" });
+        const tabId = tabs[0].id;
+        chrome.tabs.sendMessage(tabId, { action: "cancelMonitor" }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn(`[WebTextSync] 無法發送 cancelMonitor 至 tab ${tabId}:`, chrome.runtime.lastError.message);
+          }
+        });
       }
+      sendResponse();
     });
     return true; // 保持消息通道開放
+  }
+
+  // 取消 同步輸出目標
+  if (msg.action === "cancelOutputTarget") {
+    chrome.tabs.sendMessage(msg.tabId, { action: "cancelOutputTarget" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn(`[WebTextSync] 取消輸出目標失敗，tab ${msg.tabId}:`, chrome.runtime.lastError.message);
+      }
+    });
+    return ;
   }
 
   // 同步輸出文字
@@ -80,56 +105,53 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     console.log('[WebTextSync] 收到同步輸出請求，數據:', msg.data);
     
     // 獲取所有輸出目標分頁並發送同步消息
-    chrome.storage.local.get(['syncTargets'], (result) => {
+    chrome.storage.local.get(['syncTargets','syncSource'], (res) => {
       if (chrome.runtime.lastError) {
         console.error('[WebTextSync] 無法讀取輸出目標:', chrome.runtime.lastError);
         return;
       }
       
-      const syncTargetsArray = result.syncTargets || [];
-      console.log('[WebTextSync] 找到輸出目標:', syncTargetsArray);
-      
+      const syncTargetsArray = res.syncTargets || [];
       if (syncTargetsArray.length === 0) {
         console.log('[WebTextSync] 沒有設定輸出目標');
         return;
       }
       
       // 獲取監聽來源分頁 ID 以避免循環
-      chrome.storage.local.get(['syncSource'], (sourceResult) => {
-        const syncSource = sourceResult.syncSource;
-        const sourceTabId = syncSource ? syncSource.id : null;
+      const syncSource = sourceResult.syncSource;
+      const sourceTabId = syncSource ? syncSource.id : null;
+      console.log(`[WebTextSync] 監聽來源分頁 ID: ${sourceTabId}`);
         
-        console.log(`[WebTextSync] 監聽來源分頁 ID: ${sourceTabId}`);
+      // 向每個輸出目標分頁發送同步消息（排除監聽來源）
+      syncTargetsArray.forEach((target, i) => {
+        if (!target?.id) return;
         
-        // 向每個輸出目標分頁發送同步消息（排除監聽來源）
-        syncTargetsArray.forEach((target, index) => {
-          if (target && target.id) {
-            // 防循環：如果輸出目標就是監聽來源，跳過
-            if (sourceTabId && target.id === sourceTabId) {
-              console.log(`[WebTextSync] 跳過輸出到監聽來源分頁: ${target.title} (ID: ${target.id})`);
-              return;
-            }
-            
-            chrome.tabs.get(target.id, (tab) => {
-              if (chrome.runtime.lastError || !tab) {
-                console.warn(`[WebTextSync] 輸出目標分頁 ${target.id} 不存在:`, target.title);
+        // 防循環：如果輸出目標就是監聽來源，跳過
+        if (sourceTabId && target.id === sourceTabId) {
+          console.log(`[WebTextSync] 跳過輸出到來源分頁: ${target.title} (ID: ${target.id})`);
+          return;
+        }
+        
+        chrome.tabs.get(target.id, (tab) => {
+          if (chrome.runtime.lastError || !tab) {
+            console.warn(`[WebTextSync] 輸出目標分頁 ${target.id} 不存在:`, target.title);
+          } else {
+            chrome.tabs.sendMessage(target.id, { 
+              action: "syncOutput", 
+              data: msg.data,
+              sourceTabId: sourceTabId // 傳遞來源分頁 ID
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                console.warn(`[WebTextSync] 無法發送到分頁 ${target.id}:`, chrome.runtime.lastError.message);
               } else {
-                chrome.tabs.sendMessage(target.id, { 
-                  action: "syncOutput", 
-                  data: msg.data,
-                  sourceTabId: sourceTabId // 傳遞來源分頁 ID
-                }, (response) => {
-                  if (chrome.runtime.lastError) {
-                    console.warn(`[WebTextSync] 無法發送到分頁 ${target.id}:`, chrome.runtime.lastError.message);
-                  } else {
-                    console.log(`[WebTextSync] 已發送同步消息到: ${target.title}`);
-                  }
-                });
+                console.log(`[WebTextSync] 已發送同步消息到: ${target.title}`);
               }
             });
           }
         });
       });
+      
+      sendResponse();
     });
     return true; // 保持消息通道開放
   }
